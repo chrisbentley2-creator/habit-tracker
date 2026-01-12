@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Habit Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+  font-family: system-ui, sans-serif;
+  background: #f4f6f8;
+  margin: 0;
+  padding: 15px;
+}
+.container {
+  max-width: 700px;
+  margin: auto;
+  background: white;
+  padding: 20px;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+h1, h2 {
+  text-align: center;
+}
+.section {
+  margin-bottom: 25px;
+}
+input, button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 6px;
+  font-size: 16px;
+}
+button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+}
+.summary {
+  background: #f1f5f9;
+  padding: 15px;
+  border-radius: 10px;
+}
+.progress {
+  font-weight: bold;
+}
+canvas {
+  margin-top: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<h1>🔥 Habit Tracker</h1>
+
+<div class="section">
+<h2>🎯 Daily Goals</h2>
+<input id="goalWater" type="number" placeholder="Water goal (oz)">
+<input id="goalReading" type="number" placeholder="Reading goal (minutes)">
+<input id="goalWorkout" type="number" placeholder="Workout goal (count)">
+<button onclick="saveGoals()">Save Goals</button>
+</div>
+
+<div class="section">
+<h2>🏋️ Workout</h2>
+<input id="workoutInput" placeholder="Workout description">
+<button onclick="addWorkout()">Add Workout</button>
+</div>
+
+<div class="section">
+<h2>📖 Reading (minutes)</h2>
+<input id="readingInput" type="number">
+<button onclick="addReading()">Add Reading</button>
+</div>
+
+<div class="section">
+<h2>💧 Water (oz)</h2>
+<input id="waterInput" type="number">
+<button onclick="addWater()">Add Water</button>
+</div>
+
+<div class="section summary">
+<h2>📊 Today</h2>
+<div id="todaySummary"></div>
+<div id="goalProgress"></div>
+<div id="streaks"></div>
+</div>
+
+<div class="section">
+<h2>📈 Last 7 Days</h2>
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<script>
+const today = new Date().toISOString().slice(0,10);
+
+function loadAll() {
+  return JSON.parse(localStorage.getItem("habitData")) || {};
+}
+
+function saveAll(data) {
+  localStorage.setItem("habitData", JSON.stringify(data));
+}
+
+function getDay(date) {
+  const all = loadAll();
+  return all[date] || { workouts: [], reading: 0, water: 0 };
+}
+
+function saveDay(date, dayData) {
+  const all = loadAll();
+  all[date] = dayData;
+  saveAll(all);
+  render();
+}
+
+function saveGoals() {
+  localStorage.setItem("goals", JSON.stringify({
+    water: goalWater.value,
+    reading: goalReading.value,
+    workout: goalWorkout.value
+  }));
+  render();
+}
+
+function loadGoals() {
+  return JSON.parse(localStorage.getItem("goals")) || {};
+}
+
+function addWorkout() {
+  const d = getDay(today);
+  d.workouts.push(workoutInput.value);
+  workoutInput.value = "";
+  saveDay(today, d);
+}
+
+function addReading() {
+  const d = getDay(today);
+  d.reading += Number(readingInput.value);
+  readingInput.value = "";
+  saveDay(today, d);
+}
+
+function addWater() {
+  const d = getDay(today);
+  d.water += Number(waterInput.value);
+  waterInput.value = "";
+  saveDay(today, d);
+}
+
+function getStreak(metric) {
+  const all = loadAll();
+  let streak = 0;
+  let day = new Date();
+  while (true) {
+    const key = day.toISOString().slice(0,10);
+    if (!all[key] || all[key][metric] === 0 || (metric === "workouts" && all[key].workouts.length === 0)) break;
+    streak++;
+    day.setDate(day.getDate() - 1);
+  }
+  return streak;
+}
+
+function render() {
+  const d = getDay(today);
+  const goals = loadGoals();
+
+  todaySummary.innerHTML = `
+    🏋️ ${d.workouts.length} workouts<br>
+    📖 ${d.reading} min reading<br>
+    💧 ${d.water} oz water
+  `;
+
+  goalProgress.innerHTML = `
+    <div class="progress">Water: ${d.water}/${goals.water || "—"}</div>
+    <div class="progress">Reading: ${d.reading}/${goals.reading || "—"}</div>
+    <div class="progress">Workouts: ${d.workouts.length}/${goals.workout || "—"}</div>
+  `;
+
+  streaks.innerHTML = `
+    🔥 Water streak: ${getStreak("water")} days<br>
+    🔥 Reading streak: ${getStreak("reading")} days<br>
+    🔥 Workout streak: ${getStreak("workouts")} days
+  `;
+
+  drawChart();
+}
+
+function drawChart() {
+  const ctx = document.getElementById("chart").getContext("2d");
+  const all = loadAll();
+  const labels = [];
+  const water = [];
+  const reading = [];
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0,10);
+    labels.push(key.slice(5));
+    water.push(all[key]?.water || 0);
+    reading.push(all[key]?.reading || 0);
+  }
+
+  if (window.chart) window.chart.destroy();
+
+  window.chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Water (oz)", data: water },
+        { label: "Reading (min)", data: reading }
+      ]
+    }
+  });
+}
+
+render();
+</script>
+
+</body>
+</html>
